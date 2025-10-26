@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TCS Stock Analysis Dashboard</title>
+    
+    <!-- 1. Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- 2. Chart.js for interactive charts -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- 3. Lucide Icons for a clean UI -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <style>
+        /* Use the Inter font, a clean sans-serif */
+        body {
+            font-family: 'Inter', sans-serif;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+        /* Custom scrollbar for a cleaner look in tables */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #2d3748; /* gray-800 */
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #4a5568; /* gray-600 */
+            border-radius: 3px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #718096; /* gray-500 */
+        }
+        
+        /* Hide elements until data is loaded */
+        [v-cloak] {
+            display: none;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-100">
+
+    <!-- =========== FILE UPLOAD MODAL =========== -->
+    <div id="upload-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-gray-900 bg-opacity-80 backdrop-blur-sm">
+        <div class="bg-gray-800 p-8 rounded-lg shadow-2xl max-w-md w-full text-center border border-gray-700">
+            <h2 class="text-2xl font-bold mb-4 text-white">Stock Analysis Dashboard</h2>
+            <p class="text-gray-400 mb-6">Please upload the <code class="bg-gray-700 text-emerald-400 px-2 py-1 rounded">tcs_stock_analysis.json</code> file to load the dashboard.</p>
+            
+            <label for="jsonFileInput" class="w-full cursor-pointer bg-blue-600 text-white px-6 py-3 rounded-md font-semibold hover:bg-blue-700 transition duration-200 inline-block">
+                Select JSON File
+            </label>
+            <input type="file" id="jsonFileInput" class="hidden" accept=".json">
+            
+            <p id="file-error" class="text-red-400 mt-4 text-sm hidden"></p>
+            <p id="file-loading" class="text-blue-400 mt-4 text-sm hidden">
+                Loading and parsing data...
+            </p>
+        </div>
+    </div>
+
+    <!-- =========== MAIN DASHBOARD (Hidden by default) =========== -->
+    <main id="dashboard" class="container mx-auto p-4 md:p-6" style="display: none;">
+        
+        <!-- === HEADER === -->
+        <header class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6">
+            <div>
+                <h1 id="companyName" class="text-4xl font-bold text-white">---</h1>
+                <p id="companySymbol" class="text-xl text-gray-400">---</p>
+            </div>
+            <div class="text-left md:text-right mt-4 md:mt-0">
+                <p class="text-4xl font-bold text-emerald-400" id="latestPrice">₹0.00</p>
+                <p class="text-gray-400" id="latestDate">As of ---</p>
+            </div>
+        </header>
+
+        <!-- === MAIN GRID LAYOUT === -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+            <!-- === LEFT COLUMN (Chart & Findings) === -->
+            <div class="lg:col-span-2 flex flex-col gap-6">
+
+                <!-- Price Chart Card -->
+                <div class="bg-gray-800 p-4 md:p-6 rounded-lg shadow-lg border border-gray-700">
+                    <h2 class="text-2xl font-semibold mb-4 text-white">Price History & 30-Day Forecast</h2>
+                    <div class="h-64 md:h-96 relative">
+                        <canvas id="priceChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Analytical Findings Card -->
+                <div class="bg-gray-800 p-4 md:p-6 rounded-lg shadow-lg border border-gray-700">
+                    <h2 class="text-2xl font-semibold mb-6 text-white">Analytical Findings</h2>
+                    <div id="analyticsFindings" class="space-y-6">
+                        <!-- Findings will be injected here by JS -->
+                    </div>
+                </div>
+
+                <!-- Company Profile Card -->
+                <div class="bg-gray-800 p-4 md:p-6 rounded-lg shadow-lg border border-gray-700">
+                    <h2 class="text-2xl font-semibold mb-4 text-white">Company Profile</h2>
+                    <p id="companySector" class="text-lg text-blue-400 font-medium mb-2">---</p>
+                    <p id="companySummary" class="text-gray-300 leading-relaxed">
+                        ---
+                    </p>
+                </div>
+            </div>
+
+            <!-- === RIGHT COLUMN (Metrics & Actions) === -->
+            <div class="lg:col-span-1 flex flex-col gap-6">
+
+                <!-- Key Metrics Card -->
+                <div class="bg-gray-800 p-4 md:p-6 rounded-lg shadow-lg border border-gray-700">
+                    <h2 class="text-2xl font-semibold mb-6 text-white">Key Metrics</h2>
+                    <div id="keyMetrics" class="grid grid-cols-2 gap-x-4 gap-y-5">
+                        <!-- Metrics will be injected here by JS -->
+                    </div>
+                </div>
+                
+                <!-- Corporate Actions Card -->
+                <div class="bg-gray-800 rounded-lg shadow-lg border border-gray-700 overflow-hidden">
+                    <h2 class="text-2xl font-semibold text-white p-4 md:p-6 pb-0">Corporate Actions</h2>
+                    
+                    <!-- Tabs -->
+                    <div class="flex border-b border-gray-700 mt-4">
+                        <button id="tab-dividends" class="tab-btn flex-1 py-3 px-4 text-center font-medium border-b-2 border-blue-500 text-white">
+                            Dividends
+                        </button>
+                        <button id="tab-splits" class="tab-btn flex-1 py-3 px-4 text-center font-medium border-b-2 border-transparent text-gray-400 hover:text-white transition">
+                            Stock Splits
+                        </button>
+                    </div>
+                    
+                    <!-- Tables Container -->
+                    <div class="p-4 md:p-6">
+                        <!-- Dividends Table -->
+                        <div id="content-dividends" class="tab-content max-h-96 overflow-y-auto custom-scrollbar">
+                            <table class="w-full text-left">
+                                <thead class="sticky top-0 bg-gray-800">
+                                    <tr>
+                                        <th class="py-2 text-sm font-semibold text-gray-400">Date</th>
+                                        <th class="py-2 text-sm font-semibold text-gray-400 text-right">Amount (₹)</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="dividendTableBody">
+                                    <!-- Dividend rows will be injected here -->
+                                </tbody>
+                            </table>
+                        </div>
+                        
+                        <!-- Splits Table -->
+                        <div id="content-splits" class="tab-content max-h-96 overflow-y-auto custom-scrollbar" style="display: none;">
+                            <table class="w-full text-left">
+                                <thead class="sticky top-0 bg-gray-800">
+                                    <tr>
+                                        <th class="py-2 text-sm font-semibold text-gray-400">Date</th>
+                                        <th class="py-2 text-sm font-semibold text-gray-400 text-right">Factor</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="splitTableBody">
+                                    <!-- Split rows will be injected here -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const fileInput = document.getElementById('jsonFileInput');
+            const uploadModal = document.getElementById('upload-modal');
+            const dashboard = document.getElementById('dashboard');
+            const fileError = document.getElementById('file-error');
+            const fileLoading = document.getElementById('file-loading');
+            
+            let priceChart = null; // To hold the chart instance
+
+            // --- FILE UPLOAD HANDLER ---
+            fileInput.addEventListener('change', (event) => {
+                const file = event.target.files[0];
+                
+                if (!file) {
+                    fileError.textContent = 'No file selected.';
+                    fileError.classList.remove('hidden');
+                    return;
+                }
+                
+                if (!file.name.endsWith('.json')) {
+                    fileError.textContent = 'Invalid file type. Please upload a .json file.';
+                    fileError.classList.remove('hidden');
+                    return;
+                }
+
+                fileError.classList.add('hidden');
+                fileLoading.classList.remove('hidden');
+
+                const reader = new FileReader();
+
+                reader.onload = (e) => {
+                    try {
+                        const jsonContent = e.target.result;
+                        const data = JSON.parse(jsonContent);
+                        
+                        // Run all rendering functions
+                        initializeApp(data);
+
+                        // Hide modal, show dashboard
+                        uploadModal.style.display = 'none';
+                        dashboard.style.display = 'block';
+
+                    } catch (err) {
+                        fileLoading.classList.add('hidden');
+                        fileError.textContent = 'Error parsing JSON file. Is it corrupted?';
+                        fileError.classList.remove('hidden');
+                        console.error("JSON Parse Error:", err);
+                    }
+                };
+                
+                reader.onerror = () => {
+                    fileLoading.classList.add('hidden');
+                    fileError.textContent = 'Error reading file.';
+                    fileError.classList.remove('hidden');
+                };
+
+                reader.readAsText(file);
+            });
+
+            // --- MASTER INITIALIZATION FUNCTION ---
+            function initializeApp(data) {
+                renderHeader(data.company_info, data.key_metrics);
+                renderKeyMetrics(data.key_metrics);
+                renderCompanyProfile(data.company_info);
+                renderAnalyticsFindings(data.analytics_findings);
+                renderStockActions(data.stock_actions);
+                renderPriceChart(data.historical_data_close, data.forecast_30day);
+                setupTabs();
+                
+                // Render all icons
+                lucide.createIcons();
+            }
+            
+            // --- HELPER FUNCTIONS ---
+            const formatCurrency = (num) => `₹${Number(num).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+            const formatLargeNumber = (num) => Number(num).toLocaleString('en-IN');
+            
+            // --- RENDER FUNCTIONS ---
+            
+            function renderHeader(company, metrics) {
+                document.getElementById('companyName').textContent = company.shortName || 'TCS';
+                document.getElementById('companySymbol').textContent = company.symbol || 'TCS.NS';
+                document.getElementById('latestPrice').textContent = formatCurrency(metrics.latest_close);
+                document.getElementById('latestDate').textContent = `As of ${new Date(metrics.latest_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}`;
+            }
+
+            function renderKeyMetrics(metrics) {
+                const container = document.getElementById('keyMetrics');
+                
+                const metricItems = [
+                    { label: 'All-Time High', value: formatCurrency(metrics.all_time_high) },
+                    { label: 'All-Time Low', value: formatCurrency(metrics.all_time_low) },
+                    { label: '52-Week High', value: formatCurrency(metrics['52_week_high']) },
+                    { label: '52-Week Low', value: formatCurrency(metrics['52_week_low']) },
+                    { label: 'Latest Volume', value: formatLargeNumber(metrics.latest_volume) },
+                    { label: 'Latest Date', value: new Date(metrics.latest_date).toLocaleDateString('en-GB') },
+                ];
+                
+                container.innerHTML = metricItems.map(item => `
+                    <div>
+                        <span class="text-sm text-gray-400">${item.label}</span>
+                        <p class="text-lg font-semibold text-white">${item.value}</p>
+                    </div>
+                `).join('');
+            }
+
+            function renderCompanyProfile(company) {
+                document.getElementById('companySector').textContent = company.sector || 'Unknown Sector';
+                document.getElementById('companySummary').textContent = company.longBusinessSummary || 'No summary available.';
+            }
+
+            function renderAnalyticsFindings(findings) {
+                const container = document.getElementById('analyticsFindings');
+                const icons = {
+                    objective_1_price_trend: 'trending-up',
+                    objective_2_volatility: 'zap',
+                    objective_3_volume: 'bar-chart-2',
+                    objective_4_corporate_actions: 'briefcase',
+                    objective_5_forecast: 'activity'
+                };
+
+                container.innerHTML = Object.entries(findings).map(([key, value]) => `
+                    <div class="flex items-start gap-4">
+                        <div class="flex-shrink-0 w-8 h-8 flex items-center justify-center bg-gray-700 text-blue-400 rounded-full">
+                            <i data-lucide="${icons[key] || 'info'}" class="w-5 h-5"></i>
+                        </div>
+                        <div>
+                            <p class="text-gray-300 leading-relaxed">${value}</p>
+                        </div>
+                    </div>
+                `).join('');
+            }
+
+            function renderStockActions(actions) {
+                const dividendBody = document.getElementById('dividendTableBody');
+                dividendBody.innerHTML = actions.dividends.map(d => `
+                    <tr class="border-b border-gray-700 hover:bg-gray-700/50">
+                        <td class="py-3 px-1 text-gray-300">${new Date(d.Date).toLocaleDateString('en-GB')}</td>
+                        <td class="py-3 px-1 text-emerald-400 text-right font-mono">${Number(d.Dividends).toFixed(2)}</td>
+                    </tr>
+                `).reverse().join(''); // Show most recent first
+
+                const splitBody = document.getElementById('splitTableBody');
+                splitBody.innerHTML = actions.splits.map(s => `
+                    <tr class="border-b border-gray-700 hover:bg-gray-700/50">
+                        <td class="py-3 px-1 text-gray-300">${new Date(s.Date).toLocaleDateString('en-GB')}</td>
+                        <td class="py-3 px-1 text-blue-400 text-right font-mono">${s['Stock Splits']}:1</td>
+                    </tr>
+                `).reverse().join(''); // Show most recent first
+            }
+            
+            function setupTabs() {
+                const tabs = document.querySelectorAll('.tab-btn');
+                const contents = document.querySelectorAll('.tab-content');
+                
+                tabs.forEach(tab => {
+                    tab.addEventListener('click', () => {
+                        // Deactivate all
+                        tabs.forEach(t => {
+                            t.classList.remove('text-white', 'border-blue-500');
+                            t.classList.add('text-gray-400', 'border-transparent');
+                        });
+                        contents.forEach(c => c.style.display = 'none');
+                        
+                        // Activate clicked
+                        tab.classList.add('text-white', 'border-blue-500');
+                        tab.classList.remove('text-gray-400', 'border-transparent');
+                        
+                        const contentId = tab.id.replace('tab-', 'content-');
+                        document.getElementById(contentId).style.display = 'block';
+                    });
+                });
+            }
+
+            function renderPriceChart(history, forecast) {
+                const ctx = document.getElementById('priceChart').getContext('2d');
+                
+                const historyLabels = Object.keys(history);
+                const historyData = Object.values(history);
+                const forecastLabels = Object.keys(forecast);
+                const forecastData = Object.values(forecast);
+
+                // Create a single labels array
+                const allLabels = [...historyLabels, ...forecastLabels];
+                
+                // Create a forecast dataset that has nulls for the history part
+                const forecastDataWithGaps = Array(historyLabels.length).fill(null).concat(forecastData);
+                
+                // To connect the line, make the first forecast point repeat the last history point
+                forecastDataWithGaps[historyLabels.length] = historyData[historyData.length - 1];
+
+
+                if (priceChart) {
+                    priceChart.destroy();
+                }
+
+                priceChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: allLabels,
+                        datasets: [
+                            {
+                                label: 'TCS Close Price',
+                                data: historyData,
+                                borderColor: 'rgb(59, 130, 246)', // blue-500
+                                backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                                borderWidth: 2,
+                                pointRadius: 0,
+                                fill: true,
+                            },
+                            {
+                                label: '30-Day Forecast',
+                                data: forecastDataWithGaps,
+                                borderColor: 'rgb(234, 179, 8)', // yellow-500
+                                borderWidth: 2,
+                                borderDash: [5, 5], // Dashed line
+                                pointRadius: 0,
+                                fill: false,
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        interaction: {
+                            mode: 'index',
+                            intersect: false,
+                        },
+                        scales: {
+                            x: {
+                                type: 'category',
+                                ticks: {
+                                    color: 'rgb(156, 163, 175)', // gray-400
+                                    // Auto-skip ticks to avoid clutter
+                                    autoSkip: true,
+                                    maxTicksLimit: 10
+                                },
+                                grid: {
+                                    color: 'rgba(255, 255, 255, 0.05)'
+                                }
+                            },
+                            y: {
+                                ticks: {
+                                    color: 'rgb(156, 163, 175)', // gray-400
+                                    callback: (value) => `₹${value}`
+                                },
+                                grid: {
+                                    color: 'rgba(255, 255, 255, 0.1)'
+                                }
+                            }
+                        },
+                        plugins: {
+                            legend: {
+                                labels: {
+                                    color: 'rgb(209, 213, 219)' // gray-300
+                                }
+                            },
+                            tooltip: {
+                                backgroundColor: 'rgb(31, 41, 55)', // gray-800
+                                titleColor: 'rgb(229, 231, 235)', // gray-200
+                                bodyColor: 'rgb(209, 213, 219)', // gray-300
+                                borderColor: 'rgb(55, 65, 81)', // gray-700
+                                borderWidth: 1,
+                                callbacks: {
+                                    label: function(context) {
+                                        let label = context.dataset.label || '';
+                                        if (label) {
+                                            label += ': ';
+                                        }
+                                        if (context.parsed.y !== null) {
+                                            label += formatCurrency(context.parsed.y);
+                                        }
+                                        return label;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+        });
+    </script>
+</body>
+</html>
